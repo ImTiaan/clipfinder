@@ -1,0 +1,114 @@
+.container {
+  --background-base: #040806;
+  --background-glow: rgba(13, 54, 43, 0.16);
+  --burst-colour: rgba(5, 63, 51, 0.92);
+  --grid-colour: rgba(138, 250, 195, 0.06);
+  --grain-opacity: 0.04;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 22% 20%, rgba(26, 84, 65, 0.3), transparent 28%),
+    radial-gradient(circle at 78% 22%, rgba(17, 48, 38, 0.24), transparent 24%),
+    radial-gradient(circle at 50% 60%, var(--background-glow) 0%, transparent 36%),
+    var(--background-base);
+  z-index: 0;
+}
+
+.burstWrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2200px;
+  height: 2200px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.burst {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0.2;
+  background: repeating-conic-gradient(
+    from -8deg,
+    var(--burst-colour) 0deg 10deg,
+    transparent 10deg 18deg
+  );
+  mask-image: radial-gradient(circle at center, transparent 0 180px, black 181px 100%);
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0 180px, black 181px 100%);
+  animation: spin 130s linear infinite;
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+  mask-image: linear-gradient(180deg, transparent 0%, black 12%, black 88%, transparent 100%);
+}
+
+.container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015) 0%, rgba(255, 255, 255, 0) 12%, rgba(0, 0, 0, 0) 88%, rgba(0, 0, 0, 0.16) 100%);
+  pointer-events: none;
+}
+
+.container::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+  opacity: var(--grain-opacity);
+  pointer-events: none;
+  animation: grain 9s steps(10) infinite;
+}
+
+@keyframes grain {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  20% {
+    transform: translate(-8%, 6%);
+  }
+
+  40% {
+    transform: translate(6%, -10%);
+  }
+
+  60% {
+    transform: translate(-4%, 10%);
+  }
+
+  80% {
+    transform: translate(10%, 4%);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burst,
+  .container::after {
+    animation: none;
+  }
+}
