@@ -23,7 +23,9 @@ export interface ClipQueueItem {
 
 export interface ClipQueueResponse {
   range: TimeRange;
+  sourceRange: TimeRange;
   refreshedAt: string;
+  isTruncated: boolean;
   totalFetched: number;
   totalEligible: number;
   excludedWithoutVideo: number;

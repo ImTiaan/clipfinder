@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createQueueResponseFromClips,
+  filterQueueResponseByRange,
   getTimeSlicesForRange,
   hasMoreClipPages,
   matchesSourceTitle,
@@ -94,6 +95,8 @@ describe("createQueueResponseFromClips", () => {
 
     expect(payload.totalFetched).toBe(3);
     expect(payload.totalEligible).toBe(1);
+    expect(payload.sourceRange).toBe("24h");
+    expect(payload.isTruncated).toBe(false);
     expect(payload.excludedWithoutVideo).toBe(1);
     expect(payload.filteredOutByTitle).toBe(1);
     expect(payload.items[0]?.id).toBe("AlphaClip");
@@ -156,5 +159,79 @@ describe("hasMoreClipPages", () => {
 
   it("stops pagination when the slice page cap is reached", () => {
     expect(hasMoreClipPages("next-page", 10)).toBe(false);
+  });
+});
+
+describe("filterQueueResponseByRange", () => {
+  it("derives a smaller range from an existing queue snapshot", () => {
+    const payload = filterQueueResponseByRange(
+      {
+        range: "30d",
+        sourceRange: "30d",
+        refreshedAt: "2026-07-21T12:00:00.000Z",
+        isTruncated: false,
+        totalFetched: 10,
+        totalEligible: 3,
+        excludedWithoutVideo: 5,
+        filteredOutByTitle: 2,
+        items: [
+          {
+            id: "recent",
+            url: "https://clips.twitch.tv/recent",
+            title: "Recent clip",
+            creatorName: "viewerA",
+            creatorId: "1",
+            thumbnailUrl: "https://example.com/recent.jpg",
+            createdAt: "2026-07-21T11:30:00.000Z",
+            durationSeconds: 30,
+            viewCount: 100,
+            broadcasterId: "10",
+            broadcasterName: "teewee",
+            sourceVideoId: "vod-1",
+            sourceStreamTitle: "ChaseRP stream",
+            matchesFilter: true,
+          },
+          {
+            id: "mid",
+            url: "https://clips.twitch.tv/mid",
+            title: "Mid clip",
+            creatorName: "viewerB",
+            creatorId: "2",
+            thumbnailUrl: "https://example.com/mid.jpg",
+            createdAt: "2026-07-19T12:30:00.000Z",
+            durationSeconds: 28,
+            viewCount: 80,
+            broadcasterId: "11",
+            broadcasterName: "teewee",
+            sourceVideoId: "vod-2",
+            sourceStreamTitle: "ChaseRP stream",
+            matchesFilter: true,
+          },
+          {
+            id: "older",
+            url: "https://clips.twitch.tv/older",
+            title: "Older clip",
+            creatorName: "viewerC",
+            creatorId: "3",
+            thumbnailUrl: "https://example.com/older.jpg",
+            createdAt: "2026-07-10T12:30:00.000Z",
+            durationSeconds: 22,
+            viewCount: 60,
+            broadcasterId: "12",
+            broadcasterName: "teewee",
+            sourceVideoId: "vod-3",
+            sourceStreamTitle: "ChaseRP stream",
+            matchesFilter: true,
+          },
+        ],
+      },
+      "3d",
+    );
+
+    expect(payload.range).toBe("3d");
+    expect(payload.sourceRange).toBe("30d");
+    expect(payload.isTruncated).toBe(false);
+    expect(payload.totalEligible).toBe(2);
+    expect(payload.items.map((item) => item.id)).toEqual(["recent", "mid"]);
   });
 });

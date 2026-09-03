@@ -7,6 +7,7 @@ import ClipPlayerPanel from "@/components/ClipPlayerPanel";
 import QueueSidebar from "@/components/QueueSidebar";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import styles from "@/components/ClipQueueApp.module.css";
+import { filterQueueResponseByRange } from "@/lib/clip-queue";
 import {
   ApiErrorResponse,
   ClipMediaResponse,
@@ -24,6 +25,7 @@ interface ClipQueueAppProps {
 }
 
 const PRELOAD_BATCH_SIZE = 8;
+const DERIVABLE_RANGES: TimeRange[] = ["24h", "3d", "7d"];
 
 function getApiErrorMessage(payload: ApiErrorResponse | null): string {
   if (!payload) {
@@ -43,6 +45,9 @@ export default function ClipQueueApp({
   initialMedia,
   initialRange,
 }: ClipQueueAppProps) {
+  const [queueCacheByRange, setQueueCacheByRange] = useState<
+    Partial<Record<TimeRange, ClipQueueResponse>>
+  >({});
   const [mediaByClipId, setMediaByClipId] = useState<Record<string, ClipMediaResponse>>({});
   const [mediaErrorsByClipId, setMediaErrorsByClipId] = useState<Record<string, string>>({});
   const [resolvingClipId, setResolvingClipId] = useState<string | null>(null);
@@ -72,9 +77,115 @@ export default function ClipQueueApp({
     dismissClip,
   } = useClipQueueStore();
 
+  const thirtyDayQueue = queueCacheByRange["30d"] ?? null;
+  const canDeriveFromThirtyDay = Boolean(thirtyDayQueue && !thirtyDayQueue.isTruncated);
+
+  const canUseCachedQueue = useCallback(
+    (cachedQueue: ClipQueueResponse | undefined, nextRange: TimeRange): boolean => {
+      if (!cachedQueue) {
+        return false;
+      }
+
+      if (nextRange === "30d") {
+        return true;
+      }
+
+      if (cachedQueue.sourceRange === cachedQueue.range) {
+        return true;
+      }
+
+      return canDeriveFromThirtyDay;
+    },
+    [canDeriveFromThirtyDay],
+  );
+
+  const updateQueueCache = useCallback((sourceQueue: ClipQueueResponse) => {
+    setQueueCacheByRange((currentCache) => {
+      const nextCache: Partial<Record<TimeRange, ClipQueueResponse>> = {
+        ...currentCache,
+        [sourceQueue.range]: sourceQueue,
+      };
+
+      if (sourceQueue.range === "30d") {
+        for (const option of DERIVABLE_RANGES) {
+          if (sourceQueue.isTruncated) {
+            if (nextCache[option]?.sourceRange === "30d") {
+              delete nextCache[option];
+            }
+
+            continue;
+          }
+
+          nextCache[option] = filterQueueResponseByRange(sourceQueue, option);
+        }
+      }
+
+      return nextCache;
+    });
+  }, []);
+
+  const fetchQueueResponse = useCallback(async (nextRange: TimeRange): Promise<ClipQueueResponse> => {
+    const response = await fetch(`/api/clips?range=${encodeURIComponent(nextRange)}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as ClipQueueResponse | ApiErrorResponse;
+
+    if (!response.ok) {
+      throw new Error(getApiErrorMessage(payload as ApiErrorResponse));
+    }
+
+    return payload as ClipQueueResponse;
+  }, []);
+
   useEffect(() => {
     setInitialState(initialData, initialRange, initialError);
   }, [initialData, initialError, initialRange, setInitialState]);
+
+  useEffect(() => {
+    if (!initialData) {
+      return;
+    }
+
+    updateQueueCache(initialData);
+  }, [initialData, updateQueueCache]);
+
+  useEffect(() => {
+    if (!thirtyDayQueue?.isTruncated) {
+      return;
+    }
+
+    const missingRanges = DERIVABLE_RANGES.filter((nextRange) => !queueCacheByRange[nextRange]);
+    if (!missingRanges.length) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const warmExactRanges = async () => {
+      for (const nextRange of missingRanges) {
+        try {
+          const payload = await fetchQueueResponse(nextRange);
+
+          if (isCancelled) {
+            return;
+          }
+
+          updateQueueCache(payload);
+        } catch {
+          if (isCancelled) {
+            return;
+          }
+        }
+      }
+    };
+
+    void warmExactRanges();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [fetchQueueResponse, queueCacheByRange, thirtyDayQueue, updateQueueCache]);
 
   useEffect(() => {
     if (!initialData && initialError) {
@@ -392,36 +503,48 @@ export default function ClipQueueApp({
 
   const fetchQueue = useCallback(
     async (nextRange: TimeRange, resetSession: boolean) => {
+      const sourceRange =
+        nextRange === "30d" || !canDeriveFromThirtyDay ? nextRange : "30d";
+
       setLoading(true);
       setIsPreparingView(true);
       clearFailedSkipState();
 
       try {
-        const response = await fetch(`/api/clips?range=${encodeURIComponent(nextRange)}`, {
-          method: "GET",
-          cache: "no-store",
-        });
-        const payload = (await response.json()) as ClipQueueResponse | ApiErrorResponse;
+        const sourceQueue = await fetchQueueResponse(sourceRange);
+        updateQueueCache(sourceQueue);
+        const nextQueue =
+          sourceRange === nextRange
+            ? sourceQueue
+            : filterQueueResponseByRange(sourceQueue, nextRange);
 
-        if (!response.ok) {
-          setErrorMessage(getApiErrorMessage(payload as ApiErrorResponse));
-          setIsPreparingView(false);
-          return;
-        }
+        setInitialState(nextQueue, nextRange, null);
 
-        setInitialState(payload as ClipQueueResponse, nextRange, null);
-
-        if (!resetSession && activeClip) {
+        if (!resetSession && activeClip && nextQueue.items.some((item) => item.id === activeClip.id)) {
           selectClip(activeClip.id);
         }
-      } catch {
-        setErrorMessage("Could not reach Twitch right now. Try refreshing again in a moment.");
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not reach Twitch right now. Try refreshing again in a moment.",
+        );
         setIsPreparingView(false);
       } finally {
         setLoading(false);
       }
     },
-    [activeClip, clearFailedSkipState, selectClip, setErrorMessage, setInitialState, setLoading],
+    [
+      activeClip,
+      canDeriveFromThirtyDay,
+      clearFailedSkipState,
+      fetchQueueResponse,
+      selectClip,
+      setErrorMessage,
+      setInitialState,
+      setLoading,
+      updateQueueCache,
+    ],
   );
 
   const handleRangeChange = useCallback(
@@ -430,10 +553,25 @@ export default function ClipQueueApp({
         return;
       }
 
+      const cachedQueue = queueCacheByRange[nextRange];
+      if (cachedQueue && canUseCachedQueue(cachedQueue, nextRange)) {
+        clearFailedSkipState();
+        setInitialState(cachedQueue, nextRange, null);
+        return;
+      }
+
       setRange(nextRange);
       void fetchQueue(nextRange, true);
     },
-    [fetchQueue, range, setRange],
+    [
+      canUseCachedQueue,
+      clearFailedSkipState,
+      fetchQueue,
+      queueCacheByRange,
+      range,
+      setInitialState,
+      setRange,
+    ],
   );
 
   const handleRefresh = useCallback(() => {

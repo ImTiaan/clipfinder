@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import Image from "next/image";
 
 import { formatCompactNumber, formatDuration, formatRelativeDate } from "@/lib/formatting";
@@ -27,8 +27,8 @@ export default function QueueSidebar({
   const queueListRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  useEffect(() => {
-    if (!activeClipId) {
+  useLayoutEffect(() => {
+    if (!activeClipId || !isReady) {
       return;
     }
 
@@ -39,15 +39,17 @@ export default function QueueSidebar({
       return;
     }
 
-    const listRect = listElement.getBoundingClientRect();
-    const itemRect = activeItemElement.getBoundingClientRect();
-    const nextScrollTop = listElement.scrollTop + (itemRect.top - listRect.top);
+    const animationFrameId = window.requestAnimationFrame(() => {
+      const nextScrollTop = Math.max(activeItemElement.offsetTop - listElement.offsetTop, 0);
 
-    listElement.scrollTo({
-      top: Math.max(nextScrollTop, 0),
-      behavior: "smooth",
+      listElement.scrollTo({
+        top: nextScrollTop,
+        behavior: "smooth",
+      });
     });
-  }, [activeClipId, items]);
+
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [activeClipId, isReady, items]);
 
   return (
     <div className={styles.queueSection}>

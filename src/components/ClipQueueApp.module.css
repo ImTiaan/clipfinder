@@ -1,5 +1,6 @@
 .shell {
   position: relative;
+  height: 100vh;
   min-height: 100vh;
   color: #f4f8f5;
   overflow: hidden;
@@ -8,6 +9,7 @@
 .inner {
   position: relative;
   z-index: 1;
+  height: 100vh;
   min-height: 100vh;
   padding: 28px;
 }
@@ -16,6 +18,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.75fr) minmax(340px, 0.95fr);
   gap: 24px;
+  height: calc(100vh - 56px);
   min-height: calc(100vh - 56px);
   align-items: stretch;
 }
@@ -29,6 +32,7 @@
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -38,6 +42,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  height: 100%;
   min-height: 0;
 }
 
@@ -197,6 +202,9 @@
 }
 
 .playerCard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   overflow: hidden;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -258,9 +266,12 @@
 }
 
 .featuredBody {
+  flex: 1 1 auto;
   padding: 22px;
   display: grid;
+  align-content: start;
   gap: 18px;
+  min-height: 0;
 }
 
 .panelSkeleton {
@@ -333,6 +344,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 18px;
+  height: 100%;
   min-height: 0;
 }
 
@@ -589,8 +601,14 @@
 }
 
 @media (max-width: 1180px) {
+  .shell,
+  .inner {
+    height: auto;
+  }
+
   .frame {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .sidebar {

@@ -57,7 +57,13 @@ interface QueueFromClipsInput {
   clips: HelixClip[];
   range: TimeRange;
   refreshedAt?: Date;
+  isTruncated?: boolean;
   videosById: Map<string, HelixVideo>;
+}
+
+interface FetchRecentClipsResult {
+  clips: HelixClip[];
+  isTruncated: boolean;
 }
 
 let twitchTokenCache: TwitchTokenCache | null = null;
@@ -134,6 +140,26 @@ export function getTimeSlicesForRange(range: TimeRange, now = new Date()): TimeS
   return slices;
 }
 
+export function filterQueueResponseByRange(
+  sourceQueue: ClipQueueResponse,
+  range: TimeRange,
+): ClipQueueResponse {
+  const referenceTime = new Date(sourceQueue.refreshedAt);
+  const rangeStart = referenceTime.getTime() - RANGE_TO_MS[range];
+  const items = sourceQueue.items.filter((item) => {
+    return new Date(item.createdAt).getTime() >= rangeStart;
+  });
+
+  return {
+    ...sourceQueue,
+    range,
+    sourceRange: sourceQueue.sourceRange,
+    isTruncated: sourceQueue.isTruncated,
+    totalEligible: items.length,
+    items,
+  };
+}
+
 export function hasMoreClipPages(
   cursor: string | undefined,
   pagesFetched: number,
@@ -150,6 +176,7 @@ export function createQueueResponseFromClips({
   clips,
   range,
   refreshedAt = new Date(),
+  isTruncated = false,
   videosById,
 }: QueueFromClipsInput): ClipQueueResponse {
   let excludedWithoutVideo = 0;
@@ -201,7 +228,9 @@ export function createQueueResponseFromClips({
 
   return {
     range,
+    sourceRange: range,
     refreshedAt: refreshedAt.toISOString(),
+    isTruncated,
     totalFetched: clips.length,
     totalEligible: items.length,
     excludedWithoutVideo,
@@ -278,10 +307,11 @@ function getConfiguredGameId(): string {
   return process.env.TWITCH_GAME_ID?.trim() || DEFAULT_TWITCH_GAME_ID;
 }
 
-async function fetchRecentClips(range: TimeRange): Promise<HelixClip[]> {
+async function fetchRecentClips(range: TimeRange): Promise<FetchRecentClipsResult> {
   const gameId = getConfiguredGameId();
   const clipsById = new Map<string, HelixClip>();
   const timeSlices = getTimeSlicesForRange(range);
+  let isTruncated = false;
 
   for (const slice of timeSlices) {
     let cursor: string | undefined;
@@ -304,16 +334,22 @@ async function fetchRecentClips(range: TimeRange): Promise<HelixClip[]> {
       }
 
       cursor = payload.pagination?.cursor;
-        // Helix can return fewer than the requested page size and still provide a cursor.
-        if (!hasMoreClipPages(cursor, page + 1)) {
+      // Helix can return fewer than the requested page size and still provide a cursor.
+      if (!hasMoreClipPages(cursor, page + 1)) {
+        if (cursor) {
+          isTruncated = true;
+        }
         break;
       }
     }
   }
 
-  return Array.from(clipsById.values()).sort((left, right) => {
-    return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
-  });
+  return {
+    clips: Array.from(clipsById.values()).sort((left, right) => {
+      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+    }),
+    isTruncated,
+  };
 }
 
 async function fetchVideosById(videoIds: string[]): Promise<Map<string, HelixVideo>> {
@@ -337,7 +373,7 @@ async function fetchVideosById(videoIds: string[]): Promise<Map<string, HelixVid
 }
 
 export async function getClipQueueData(range: TimeRange): Promise<ClipQueueResponse> {
-  const clips = await fetchRecentClips(range);
+  const { clips, isTruncated } = await fetchRecentClips(range);
   const uniqueVideoIds = Array.from(
     new Set(clips.map((clip) => clip.video_id).filter((videoId) => Boolean(videoId))),
   ) as string[];
@@ -346,6 +382,7 @@ export async function getClipQueueData(range: TimeRange): Promise<ClipQueueRespo
   return createQueueResponseFromClips({
     clips,
     range,
+    isTruncated,
     videosById,
   });
 }
