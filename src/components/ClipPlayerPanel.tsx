@@ -8,6 +8,7 @@ import { ClipQueueItem } from "@/lib/types";
 
 interface ClipPlayerPanelProps {
   activeClip: ClipQueueItem | null;
+  isReady: boolean;
   isQueueLoading: boolean;
   queueErrorMessage: string | null;
   mediaErrorMessage: string | null;
@@ -24,6 +25,7 @@ interface ClipPlayerPanelProps {
 
 export default function ClipPlayerPanel({
   activeClip,
+  isReady,
   isQueueLoading,
   isResolvingMedia,
   mediaErrorMessage,
@@ -44,7 +46,11 @@ export default function ClipPlayerPanel({
     <section className={`${styles.panel} ${styles.mainPanel}`}>
       <div className={styles.playerCard}>
         <div className={styles.playerFrame}>
-          {hasPlayback && activeClip ? (
+          {!isReady ? (
+            <div className={styles.playerSkeleton} aria-hidden="true">
+              <div className={`${styles.skeletonBlock} ${styles.playerSkeletonGlow}`} />
+            </div>
+          ) : hasPlayback && activeClip ? (
             <video
               key={`${activeClip.id}-${mediaUrl}`}
               className={styles.playerVideo}
@@ -94,6 +100,21 @@ export default function ClipPlayerPanel({
         </div>
 
         <div className={styles.featuredBody}>
+          {!isReady ? (
+            <div className={styles.panelSkeleton} aria-hidden="true">
+              <div className={`${styles.skeletonBlock} ${styles.skeletonPillRow}`} />
+              <div className={`${styles.skeletonBlock} ${styles.skeletonTitle}`} />
+              <div className={`${styles.skeletonBlock} ${styles.skeletonMeta}`} />
+              <div className={styles.skeletonInfoGrid}>
+                <div className={`${styles.skeletonBlock} ${styles.skeletonInfoCard}`} />
+                <div className={`${styles.skeletonBlock} ${styles.skeletonInfoCard}`} />
+                <div className={`${styles.skeletonBlock} ${styles.skeletonInfoCard}`} />
+                <div className={`${styles.skeletonBlock} ${styles.skeletonInfoCard}`} />
+              </div>
+              <div className={`${styles.skeletonBlock} ${styles.skeletonSourceCard}`} />
+            </div>
+          ) : (
+            <>
           <div className={styles.controlRow}>
             <div className={styles.pillGroup}>
               <button type="button" className={styles.pill} onClick={onPrevious} disabled={!activeClip}>
@@ -185,6 +206,8 @@ export default function ClipPlayerPanel({
               </div>
             </>
           ) : null}
+            </>
+          )}
         </div>
       </div>
     </section>

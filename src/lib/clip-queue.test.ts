@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createQueueResponseFromClips,
   getTimeSlicesForRange,
+  hasMoreClipPages,
   matchesSourceTitle,
 } from "./clip-queue";
 
@@ -141,5 +142,19 @@ describe("getTimeSlicesForRange", () => {
       startedAt: "2026-06-21T12:00:00.000Z",
       endedAt: "2026-06-23T12:00:00.000Z",
     });
+  });
+});
+
+describe("hasMoreClipPages", () => {
+  it("continues pagination when Twitch provides a cursor", () => {
+    expect(hasMoreClipPages("next-page", 1)).toBe(true);
+  });
+
+  it("stops pagination when Twitch omits the cursor", () => {
+    expect(hasMoreClipPages(undefined, 1)).toBe(false);
+  });
+
+  it("stops pagination when the slice page cap is reached", () => {
+    expect(hasMoreClipPages("next-page", 10)).toBe(false);
   });
 });

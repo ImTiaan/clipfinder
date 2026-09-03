@@ -12,7 +12,7 @@ const TITLE_MATCHER =
 const TWITCH_HELIX_BASE = "https://api.twitch.tv/helix";
 const HELIX_BATCH_LIMIT = 100;
 const DEFAULT_TWITCH_GAME_ID = "32982";
-const MAX_PAGES_PER_SLICE = 2;
+const MAX_PAGES_PER_SLICE = 10;
 
 interface TimeSlice {
   startedAt: string;
@@ -132,6 +132,18 @@ export function getTimeSlicesForRange(range: TimeRange, now = new Date()): TimeS
   }
 
   return slices;
+}
+
+export function hasMoreClipPages(
+  cursor: string | undefined,
+  pagesFetched: number,
+  maxPagesPerSlice = MAX_PAGES_PER_SLICE,
+): boolean {
+  if (!cursor) {
+    return false;
+  }
+
+  return pagesFetched < maxPagesPerSlice;
 }
 
 export function createQueueResponseFromClips({
@@ -292,7 +304,8 @@ async function fetchRecentClips(range: TimeRange): Promise<HelixClip[]> {
       }
 
       cursor = payload.pagination?.cursor;
-      if (!cursor || payload.data.length < HELIX_BATCH_LIMIT) {
+        // Helix can return fewer than the requested page size and still provide a cursor.
+        if (!hasMoreClipPages(cursor, page + 1)) {
         break;
       }
     }

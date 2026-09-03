@@ -17,6 +17,7 @@
   grid-template-columns: minmax(0, 1.75fr) minmax(340px, 0.95fr);
   gap: 24px;
   min-height: calc(100vh - 56px);
+  align-items: stretch;
 }
 
 .panel {
@@ -28,6 +29,8 @@
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .mainPanel {
@@ -35,13 +38,15 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-height: 0;
 }
 
 .sidebar {
   padding: 24px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
+  height: 100%;
   min-height: 0;
 }
 
@@ -227,6 +232,12 @@
   text-align: center;
 }
 
+.playerSkeleton {
+  position: absolute;
+  inset: 0;
+  padding: 24px;
+}
+
 .placeholderCard {
   max-width: 420px;
   padding: 24px;
@@ -248,6 +259,11 @@
 
 .featuredBody {
   padding: 22px;
+  display: grid;
+  gap: 18px;
+}
+
+.panelSkeleton {
   display: grid;
   gap: 18px;
 }
@@ -315,9 +331,9 @@
 
 .queueSection {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 18px;
   min-height: 0;
-  flex: 1;
 }
 
 .queueTitle {
@@ -353,7 +369,20 @@
   display: grid;
   gap: 12px;
   overflow-y: auto;
+  min-height: 0;
+  align-content: start;
   padding-right: 2px;
+}
+
+.queueItemSkeleton {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 14px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .queueList::-webkit-scrollbar {
@@ -463,6 +492,87 @@
   background: rgba(65, 19, 19, 0.6);
 }
 
+.skeletonBlock {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.skeletonBlock::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.12),
+    transparent
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+.playerSkeletonGlow {
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+}
+
+.skeletonPillRow {
+  height: 46px;
+  width: min(480px, 100%);
+  border-radius: 999px;
+}
+
+.skeletonTitle {
+  height: 34px;
+  width: min(520px, 100%);
+}
+
+.skeletonMeta {
+  height: 18px;
+  width: min(360px, 100%);
+}
+
+.skeletonInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.skeletonInfoCard {
+  min-height: 92px;
+}
+
+.skeletonSourceCard {
+  min-height: 90px;
+}
+
+.queueThumbSkeleton {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: 16px;
+}
+
+.queueTitleSkeleton {
+  height: 22px;
+  width: 82%;
+}
+
+.queueMetaSkeleton {
+  margin-top: 10px;
+  height: 16px;
+  width: 70%;
+}
+
+.queueTagSkeleton {
+  margin-top: 12px;
+  height: 28px;
+  width: 52%;
+  border-radius: 999px;
+}
+
 .emptyQueue {
   padding: 22px;
   border-radius: 20px;
@@ -470,6 +580,12 @@
   background: rgba(255, 255, 255, 0.03);
   color: rgba(220, 231, 225, 0.74);
   line-height: 1.7;
+}
+
+@keyframes skeletonShimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @media (max-width: 1180px) {
@@ -502,6 +618,10 @@
   .infoGrid {
     grid-template-columns: 1fr 1fr;
   }
+
+  .skeletonInfoGrid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -510,7 +630,15 @@
     grid-template-columns: 1fr;
   }
 
+  .skeletonInfoGrid {
+    grid-template-columns: 1fr;
+  }
+
   .queueItem {
+    grid-template-columns: 1fr;
+  }
+
+  .queueItemSkeleton {
     grid-template-columns: 1fr;
   }
 }

@@ -19,8 +19,11 @@ import { useClipQueueStore } from "@/store/useClipQueueStore";
 interface ClipQueueAppProps {
   initialData: ClipQueueResponse | null;
   initialError: string | null;
+  initialMedia: ClipMediaResponse | null;
   initialRange: TimeRange;
 }
+
+const PRELOAD_BATCH_SIZE = 8;
 
 function getApiErrorMessage(payload: ApiErrorResponse | null): string {
   if (!payload) {
@@ -37,11 +40,13 @@ function getApiErrorMessage(payload: ApiErrorResponse | null): string {
 export default function ClipQueueApp({
   initialData,
   initialError,
+  initialMedia,
   initialRange,
 }: ClipQueueAppProps) {
   const [mediaByClipId, setMediaByClipId] = useState<Record<string, ClipMediaResponse>>({});
   const [mediaErrorsByClipId, setMediaErrorsByClipId] = useState<Record<string, string>>({});
   const [resolvingClipId, setResolvingClipId] = useState<string | null>(null);
+  const [isPreparingView, setIsPreparingView] = useState(true);
   const [failedSkipState, setFailedSkipState] = useState<{
     clipId: string;
     remainingSeconds: number;
@@ -71,6 +76,23 @@ export default function ClipQueueApp({
     setInitialState(initialData, initialRange, initialError);
   }, [initialData, initialError, initialRange, setInitialState]);
 
+  useEffect(() => {
+    if (!initialData && initialError) {
+      setIsPreparingView(false);
+    }
+  }, [initialData, initialError]);
+
+  useEffect(() => {
+    if (!initialData?.items[0] || !initialMedia) {
+      return;
+    }
+
+    setMediaByClipId((currentMedia) => ({
+      ...currentMedia,
+      [initialData.items[0].id]: initialMedia,
+    }));
+  }, [initialData, initialMedia]);
+
   const visibleItems = useMemo(() => {
     if (!queue) {
       return [];
@@ -94,10 +116,120 @@ export default function ClipQueueApp({
   const activeClipMedia = activeClip ? mediaByClipId[activeClip.id] ?? null : null;
   const isResolvingMedia = Boolean(activeClip && resolvingClipId === activeClip.id);
   const mediaErrorMessage = activeClip ? mediaErrorsByClipId[activeClip.id] ?? null : null;
+  const unresolvedItems = useMemo(() => {
+    return visibleItems.filter((item) => {
+      return !mediaByClipId[item.id] && !mediaErrorsByClipId[item.id];
+    });
+  }, [mediaByClipId, mediaErrorsByClipId, visibleItems]);
+  const isQueueReady = Boolean(queue);
+  const shouldShowGhostLoaders =
+    isPreparingView || (!isQueueReady && !errorMessage) || unresolvedItems.length > 0;
   const autoSkipCountdown =
     activeClip && failedSkipState?.clipId === activeClip.id
       ? failedSkipState.remainingSeconds
       : null;
+
+  useEffect(() => {
+    if (shouldShowGhostLoaders || !queue) {
+      return;
+    }
+
+    setIsPreparingView(false);
+  }, [queue, shouldShowGhostLoaders]);
+
+  useEffect(() => {
+    if (!queue || !isPreparingView || !unresolvedItems.length) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveClipMediaPayload = async (clipUrl: string): Promise<ClipMediaResponse> => {
+      const params = new URLSearchParams({
+        clipUrl,
+      });
+      const response = await fetch(`/api/clip-media?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ClipMediaResponse | ApiErrorResponse;
+
+      if (!response.ok) {
+        throw new Error(getApiErrorMessage(payload as ApiErrorResponse));
+      }
+
+      return payload as ClipMediaResponse;
+    };
+
+    const preloadVisibleClipMedia = async () => {
+      const resolvedMedia: Record<string, ClipMediaResponse> = {};
+      const mediaErrors: Record<string, string> = {};
+
+      for (let index = 0; index < unresolvedItems.length; index += PRELOAD_BATCH_SIZE) {
+        const batch = unresolvedItems.slice(index, index + PRELOAD_BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (item) => {
+            try {
+              const payload = await resolveClipMediaPayload(item.url);
+              return {
+                status: "resolved",
+                clipId: item.id,
+                payload,
+              } as const;
+            } catch (error) {
+              return {
+                status: "failed",
+                clipId: item.id,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Could not prepare this clip for direct playback.",
+              } as const;
+            }
+          }),
+        );
+
+        if (isCancelled) {
+          return;
+        }
+
+        for (const result of batchResults) {
+          if (result.status === "resolved") {
+            resolvedMedia[result.clipId] = result.payload;
+            continue;
+          }
+
+          mediaErrors[result.clipId] = result.error;
+        }
+      }
+
+      if (isCancelled) {
+        return;
+      }
+
+      if (Object.keys(resolvedMedia).length) {
+        setMediaByClipId((currentMedia) => ({
+          ...currentMedia,
+          ...resolvedMedia,
+        }));
+      }
+
+      if (Object.keys(mediaErrors).length) {
+        setMediaErrorsByClipId((currentErrors) => ({
+          ...currentErrors,
+          ...mediaErrors,
+        }));
+      }
+
+      setIsPreparingView(false);
+    };
+
+    void preloadVisibleClipMedia();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isPreparingView, queue, unresolvedItems]);
 
   useEffect(() => {
     if (activeClip) {
@@ -106,7 +238,7 @@ export default function ClipQueueApp({
   }, [activeClip, markWatched]);
 
   useEffect(() => {
-    if (!activeClip) {
+    if (!activeClip || isPreparingView) {
       return;
     }
 
@@ -181,7 +313,7 @@ export default function ClipQueueApp({
     return () => {
       isCancelled = true;
     };
-  }, [activeClip, mediaByClipId]);
+  }, [activeClip, isPreparingView, mediaByClipId]);
 
   useEffect(() => {
     if (!activeClip || !mediaErrorMessage || visibleItems.length <= 1) {
@@ -261,6 +393,7 @@ export default function ClipQueueApp({
   const fetchQueue = useCallback(
     async (nextRange: TimeRange, resetSession: boolean) => {
       setLoading(true);
+      setIsPreparingView(true);
       clearFailedSkipState();
 
       try {
@@ -272,6 +405,7 @@ export default function ClipQueueApp({
 
         if (!response.ok) {
           setErrorMessage(getApiErrorMessage(payload as ApiErrorResponse));
+          setIsPreparingView(false);
           return;
         }
 
@@ -282,6 +416,7 @@ export default function ClipQueueApp({
         }
       } catch {
         setErrorMessage("Could not reach Twitch right now. Try refreshing again in a moment.");
+        setIsPreparingView(false);
       } finally {
         setLoading(false);
       }
@@ -351,6 +486,7 @@ export default function ClipQueueApp({
           <ClipPlayerPanel
             activeClip={activeClip}
             autoSkipCountdown={autoSkipCountdown}
+            isReady={!shouldShowGhostLoaders}
             isQueueLoading={isLoading}
             isResolvingMedia={isResolvingMedia}
             mediaErrorMessage={mediaErrorMessage}
@@ -403,6 +539,7 @@ export default function ClipQueueApp({
 
               <QueueSidebar
                 activeClipId={activeClip?.id ?? null}
+                isReady={!shouldShowGhostLoaders}
                 items={visibleItems}
                 onSelect={handleSelectClip}
                 sortModeLabel={sortMode === "top" ? "view count" : "newest first"}

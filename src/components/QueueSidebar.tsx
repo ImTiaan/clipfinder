@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 
 import { formatCompactNumber, formatDuration, formatRelativeDate } from "@/lib/formatting";
@@ -8,6 +9,7 @@ import styles from "@/components/ClipQueueApp.module.css";
 
 interface QueueSidebarProps {
   activeClipId: string | null;
+  isReady: boolean;
   items: ClipQueueItem[];
   onSelect: (clipId: string) => void;
   sortModeLabel: string;
@@ -16,19 +18,46 @@ interface QueueSidebarProps {
 
 export default function QueueSidebar({
   activeClipId,
+  isReady,
   items,
   onSelect,
   sortModeLabel,
   watchedIds,
 }: QueueSidebarProps) {
+  const queueListRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    if (!activeClipId) {
+      return;
+    }
+
+    const listElement = queueListRef.current;
+    const activeItemElement = itemRefs.current[activeClipId];
+
+    if (!listElement || !activeItemElement) {
+      return;
+    }
+
+    const listRect = listElement.getBoundingClientRect();
+    const itemRect = activeItemElement.getBoundingClientRect();
+    const nextScrollTop = listElement.scrollTop + (itemRect.top - listRect.top);
+
+    listElement.scrollTo({
+      top: Math.max(nextScrollTop, 0),
+      behavior: "smooth",
+    });
+  }, [activeClipId, items]);
+
   return (
     <div className={styles.queueSection}>
       <div className={styles.queueHeader}>
         <div>
           <h2 className={styles.queueTitle}>Queue rail</h2>
           <p className={styles.queueSubtitle}>
-            {items.length} playable clips from the broader category feed, sorted by{" "}
-            {sortModeLabel}.
+            {isReady
+              ? `${items.length} playable clips from the broader category feed, sorted by ${sortModeLabel}.`
+              : "Loading playable clips from Twitch and preparing the queue rail."}
           </p>
         </div>
 
@@ -40,14 +69,30 @@ export default function QueueSidebar({
         </div>
       </div>
 
-      {items.length ? (
-        <div className={styles.queueList}>
+      {!isReady ? (
+        <div className={styles.queueList} aria-hidden="true">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={`queue-skeleton-${index}`} className={styles.queueItemSkeleton}>
+              <div className={`${styles.skeletonBlock} ${styles.queueThumbSkeleton}`} />
+              <div className={styles.queueBody}>
+                <div className={`${styles.skeletonBlock} ${styles.queueTitleSkeleton}`} />
+                <div className={`${styles.skeletonBlock} ${styles.queueMetaSkeleton}`} />
+                <div className={`${styles.skeletonBlock} ${styles.queueTagSkeleton}`} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : items.length ? (
+        <div ref={queueListRef} className={styles.queueList}>
           {items.map((item) => {
             const isWatched = watchedIds.includes(item.id);
 
             return (
               <button
                 key={item.id}
+                ref={(element) => {
+                  itemRefs.current[item.id] = element;
+                }}
                 type="button"
                 className={`${styles.queueItem} ${activeClipId === item.id ? styles.queueItemActive : ""}`}
                 onClick={() => onSelect(item.id)}
@@ -91,9 +136,9 @@ export default function QueueSidebar({
       )}
 
       <div className={styles.message}>
-        {watchedIds.length} clips have been opened in this session. Title filtering is
-        based on the originating VOD title, not the clip title, and this feed is still
-        best-effort rather than a complete Twitch-wide search.
+        {isReady
+          ? `${watchedIds.length} clips have been opened in this session. Title filtering is based on the originating VOD title, not the clip title, and this feed is still best-effort rather than a complete Twitch-wide search.`
+          : "We are resolving Twitch playback for every clip in this queue before revealing the live rail."}
       </div>
     </div>
   );
